@@ -1,0 +1,14 @@
+[package]
+build = "build.rs"
+name = "msp"
+version = "0.1.0"
+authors = ["Stian Eklund <stian.eklund@gmail.com>"]
+
+[dependencies]
+volatile-register = "0.1.2"
+
+[profile.dev]
+debug = true
+
+[profile.release]
+lto = true

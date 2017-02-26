@@ -62,22 +62,26 @@ fn temp_init() {
 #[allow(unused_assignments)]
 pub unsafe extern "C" fn main() -> ! {
     WDTCTL.write(0x5A00 + 0x0080);  // Turn watchdog timer off
-    PBDIR_H.write(0b0100_0001);
+
+    PBDIR_H.write(0b0100_0001);     // Set direction for P4
     PM5CTL0.write(0x0130);          // Lock GPIO
     PBOUT_H.write(0x01);
+
     ADCCTL0.write(0x0002);          // ADC Enable conversion
     ADCCTL0.write(0x0010);          // Select Reference 1
     ADCCTL0.write(0x0300);          // ADC Sample Hold Select 3
     ADCMCTL0.write(0x0010);         // ADC Input Channel 10
+
     ADCCTL0.write(0x8000);          // ADC Sample Hold Select Bit: 3
     ADCCTL1.write(0x0060);          // ADC Clock Divider Select 3
     PMMCTL2.write(0x0008);          // Turn temp sensor on
 
     ADCCTL0.write(0x0002 & 0x0001); // Enable & Start conversion
+
     let adc = ADCMEM0.read();       // Read ADC
     // Convert to temperature
     let temp = 27069 * adc - 18169625 >> 16;
-    // Enable LED to indicate where we are
+
     loop {
         PBOUT_H.modify(|x| !x);
         delay(100000);

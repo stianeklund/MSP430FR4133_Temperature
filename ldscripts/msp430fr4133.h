@@ -1,3 +1,4 @@
+
 /* ============================================================================ */
 /* Copyright (c) 2016, Texas Instruments Incorporated                           */
 /*  All rights reserved.                                                        */
@@ -3206,4 +3207,3 @@ sfr_b(WDTCTL_H);                              /* Watchdog Timer Control */
 #endif /* extern "C" */
 
 #endif /* #ifndef __MSP430FR4133 */
-

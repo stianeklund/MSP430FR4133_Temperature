@@ -1,14 +1,21 @@
 [package]
-build = "build.rs"
 name = "msp"
 version = "0.1.0"
 authors = ["Stian Eklund <stian.eklund@gmail.com>"]
+edition = "2018"
 
 [dependencies]
 volatile-register = "0.1.2"
-
-[profile.dev]
-debug = true
+msp430fr4133 = "0.1.0"
+msp430-rt = "0.2.4"
+panic-msp430 = "0.2.0"
 
 [profile.release]
-lto = true
+# Improved optimizations
+lto = "fat"
+codegen-units = 1
+opt-level = "s"
+
+[profile.dev]
+opt-level = "s"
+debug = true

@@ -1,5 +1,24 @@
 dist: bionic
 
 language: rust
-    rust:
-        - nightly
+rust:
+    - nightly
+
+addons:
+    apt:
+        packages:
+            - gcc-msp430
+            - msp430-libc
+
+before_script:
+    - wget http://software-dl.ti.com/msp430/msp430_public_sw/mcu/msp430/MSPGCC/8_3_2_2/export/msp430-gcc-8.3.1.25_linux64.tar.bz2 -O /tmp/msp430-gcc.tar.bz2
+    - tar -xvjf /tmp/msp430-gcc.tar.bz2
+    - export PATH=$PATH:$PWD/msp430-gcc-8.3.1.25_linux64/bin
+    - echo $PATH
+install:
+    - sudo apt-get -qq update
+    - cargo install cargo-xbuild
+    - rustup component add rust-src
+
+script:
+    - cargo xbuild --target msp430-none-elf --verbose

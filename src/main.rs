@@ -1,109 +1,96 @@
+#![feature(llvm_asm)]
 #![no_std]
+#![no_mangle]
 #![no_main]
-#![feature(lang_items)]
-#![feature(asm)]
 
-extern crate volatile_register;
-use volatile_register::RW;
-use core::fmt;
-use core::fmt::{Display, Formatter};
-use core::str;
+mod adc;
+mod lcd;
+mod lcd_helper;
 
-extern "C" {
-    // ADC Channel 0
-    static mut ADCCTL0:    RW<u16>;
-    static mut ADCCTL0_L:  RW<u16>;
-    static mut ADCCTL0_H:  RW<u16>;
+use crate::adc::*;
+use crate::lcd::*;
+use msp430_rt::entry;
+use msp430fr4133::Peripherals;
+use panic_msp430;
 
-    // ADC Channel 2 Control
-    static mut ADCCTL1:    RW<u16>;
-    static mut ADCCTL1_L:  RW<u16>;
-    static mut ADCCTL1_H:  RW<u16>;
+#[warn(overflowing_literals)]
+#[warn(arithmetic_overflow)]
+#[entry]
+fn main() -> ! {
+    let mut dp = Peripherals::take().unwrap();
+    let wdt = dp.WATCHDOG_TIMER;
 
-    // ADCMCTL0 Control Bits
-    static mut ADCMCTL0:   RW<u16>;
-    static mut ADCMCTL0_L: RW<u16>;
-    static mut ADCMCTL0_H: RW<u16>;
+    // Disable watchdog
+    wdt.wdtctl
+        .modify(|_, w| w.wdtpw().password().wdthold().set_bit());
 
-    // ADC Conversion Memory
-    static mut ADCMEM0:    RW<u16>;
-    static mut ADCMEM0_L:  RW<u16>;
-    static mut ADCMEM0_H:  RW<u16>;
+    // Setup XT1 Oscillator
+    dp.PORT_3_4
+        .p4sel0
+        .modify(|_, w| w.p4sel0_1().set_bit().p4sel0_2().set_bit());
 
-    // Watchdog
-    static mut  WDTCTL:    RW<u16>;
+    dp.TIMER_0_A3.ta0cctl0.modify(|_, w| w.ccie().set_bit());
+    dp.TIMER_0_A3.ta0ccr0.write(|w| unsafe { w.bits(0xc350) });
+    dp.TIMER_0_A3
+        .ta0ctl
+        .modify(|_, w| w.tassel().tassel_2().mc().mc_2());
 
-    // Power Management
-    static mut PM5CTL0:    RW<u16>;
-    static mut PMMCTL2:    RW<u16>; // 0x0008 for Temp sensor on
-    static mut PBOUT_H:    RW<u8>;
-    static mut PBDIR_H:    RW<u8>;
-}
-
-#[no_mangle]
-#[link_section = "__interrupt_vector_reset"]
-pub static RESET_VECTOR: unsafe extern "C" fn() -> ! = main;
-
-fn temp_init() {
-    unsafe {
-        ADCCTL0.write(0x0002);          // ADC Enable conversion
-        ADCCTL0.write(0x0010);          // Select Reference 1
-        ADCCTL0.write(0x0300);          // ADC Sample Hold Select 3
-        ADCMCTL0.write(0x0010);         // ADC Input Channel 10
-        ADCCTL0.write(0x8000);          // ADC Sample Hold Select Bit: 3
-        ADCCTL1.write(0x0060);          // ADC Clock Divider Select 3
-        PMMCTL2.write(0x0008);          // Turn temp sensor on
-
+    // Oscillator flag fault , clear bits
+    while dp.SFR.sfrifg1.read().ofifg().bit_is_set() {
+        dp.CS
+            .csctl7
+            .modify(|_, w| w.xt1offg().clear_bit().dcoffg().clear_bit());
+        dp.SFR.sfrifg1.modify(|_, w| w.ofifg().clear_bit());
     }
-}
+    // XT1 Oscillator (set highest drive mode)
+    // Needs to be reconfigured if waking up from LMP3.5
+    dp.CS.csctl6.modify(|_, w| w.xt1drive().xt1drive_3());
 
-#[allow(exceeding_bitshifts)]
-#[allow(unused_variables)]
-#[allow(unused_assignments)]
-pub unsafe extern "C" fn main() -> ! {
-    WDTCTL.write(0x5A00 + 0x0080);  // Turn watchdog timer off
+    // Disable the GPIO power-on default high-impedance mode
+    // needs to be disabled to activate previously configured port settings.
+    dp.PMM.pm5ctl0.write(|w| w.locklpm5().clear_bit());
 
-    PBDIR_H.write(0b0100_0001);     // Set direction for P4
-    PM5CTL0.write(0x0130);          // Lock GPIO
-    PBOUT_H.write(0x01);
+    // Set LCD power pin on in System Config register
+    dp.SYS.syscfg2.modify(|_, w| w.lcdpctl().set_bit());
+    lcd_init(&mut dp.LCD_E);
+    init_adc(&mut dp.ADC);
 
-    ADCCTL0.write(0x0002);          // ADC Enable conversion
-    ADCCTL0.write(0x0010);          // Select Reference 1
-    ADCCTL0.write(0x0300);          // ADC Sample Hold Select 3
-    ADCMCTL0.write(0x0010);         // ADC Input Channel 10
+    // Write PMM password to unlock PMM registers
+    dp.PMM
+        .pmmctl0
+        .modify(|_, w| w.pmmpw().password().pmmregoff().set_bit());
+    dp.SYS.syscfg0.modify(|_, w| w.pfwp().set_bit());
 
-    ADCCTL0.write(0x8000);          // ADC Sample Hold Select Bit: 3
-    ADCCTL1.write(0x0060);          // ADC Clock Divider Select 3
-    PMMCTL2.write(0x0008);          // Turn temp sensor on
+    // Temperature sensor enable, set internal reference &  set reference bandgap
+    dp.PMM.pmmctl2.modify(|_, w| {
+        w.tsensoren()
+            .set_bit()
+            .intrefen()
+            .set_bit()
+            .refbgrdy()
+            .set_bit()
+            .refgenrdy()
+            .set_bit()
+            .refbgact()
+            .set_bit()
+    });
 
-    ADCCTL0.write(0x0002 & 0x0001); // Enable & Start conversion
-
-    let adc = ADCMEM0.read();       // Read ADC
-    // Convert to temperature
-    let temp = 27069 * adc - 18169625 >> 16;
+    clear_lcd(&mut dp.LCD_E);
 
     loop {
-        PBOUT_H.modify(|x| !x);
-        delay(100000);
-        ADCMEM0.modify(|x| x);
+        dp.PORT_1_2.p1out.modify(|_, w| w.p1out0().clear_bit());
+        poll_temp(&mut dp.ADC, &mut dp.PORT_1_2, &mut dp.LCD_E);
+
+        delay(1000);
     }
 }
 
-#[allow(unused_variables)]
-#[allow(unused_assignments)]
-fn delay(mut n: u16) {
+fn delay(n: u32) {
     unsafe {
-        asm! {
-            "1: \n dec $0 \n jne 1b" : "+r" (n) ::: "volatile"
+        let mut i = n;
+        while i > 0 {
+            i -= 1;
+            llvm_asm!("nop": : : : "volatile");
         }
     }
-}
-
-#[no_mangle]
-#[lang = "panic_fmt"]
-pub extern "C" fn panic_fmt() -> ! {
-    loop {
-        // Do nothing
-    }
-
 }

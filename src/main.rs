@@ -13,8 +13,6 @@ use msp430_rt::entry;
 use msp430fr4133::Peripherals;
 use panic_msp430;
 
-#[warn(overflowing_literals)]
-#[warn(arithmetic_overflow)]
 #[entry]
 fn main() -> ! {
     let mut dp = Peripherals::take().unwrap();
@@ -35,7 +33,7 @@ fn main() -> ! {
         .ta0ctl
         .modify(|_, w| w.tassel().tassel_2().mc().mc_2());
 
-    // Oscillator flag fault , clear bits
+    // Oscillator flag fault, clear bits
     while dp.SFR.sfrifg1.read().ofifg().bit_is_set() {
         dp.CS
             .csctl7
@@ -61,7 +59,7 @@ fn main() -> ! {
         .modify(|_, w| w.pmmpw().password().pmmregoff().set_bit());
     dp.SYS.syscfg0.modify(|_, w| w.pfwp().set_bit());
 
-    // Temperature sensor enable, set internal reference &  set reference bandgap
+    // Temperature sensor enable, set internal reference & set reference bandgap
     dp.PMM.pmmctl2.modify(|_, w| {
         w.tsensoren()
             .set_bit()

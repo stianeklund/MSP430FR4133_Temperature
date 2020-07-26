@@ -91,6 +91,21 @@ impl Digits {
     }
 }
 
+pub fn write_temp(num: u16, lcd: &mut LCD_E) {
+    if num >= 1000 {
+        write_dig_pos((num / 1000) % 10, 3, lcd);
+    }
+    if num >= 100 {
+        write_dig_pos((num / 100) % 10, 4, lcd);
+    }
+    if num >= 10 {
+        write_dig_pos((num / 10) % 10, 5, lcd);
+    }
+    if num >= 1 {
+        write_dig_pos((num / 1) % 10, 6, lcd);
+    }
+}
+
 pub fn write_digit(num: i16, lcd: &mut LCD_E) {
     let iter = Digits::new(num as usize);
     let mut d: u8 = 0;
